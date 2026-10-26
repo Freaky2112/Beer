@@ -1,0 +1,27 @@
+<div class="grid">
+  <label class="wide">Beer
+    <input name="name" required value="{{ b.name if b else '' }}" placeholder="Name of the beer">
+  </label>
+  <label>Brewery
+    <input name="brewery" value="{{ b.brewery or '' if b else '' }}">
+  </label>
+  <label>Style
+    <input name="style" value="{{ b.style or '' if b else '' }}" placeholder="IPA, stout, saison…">
+  </label>
+  <label>ABV %
+    <input name="abv" inputmode="decimal" value="{{ b.abv or '' if b else '' }}" placeholder="5.5">
+  </label>
+  <label>Tasted on
+    <input type="date" name="tasted_on" value="{{ b.tasted_on if b else today }}">
+  </label>
+  <label>Rating
+    <select name="rating">
+      {% for n in [5,4,3,2,1] %}
+      <option value="{{ n }}" {{ 'selected' if (b.rating if b else 3) == n }}>{{ n }} / 5</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="wide">Review
+    <textarea name="review" rows="3" placeholder="Aroma, taste, finish…">{{ b.review or '' if b else '' }}</textarea>
+  </label>
+</div>
