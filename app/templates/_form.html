@@ -21,6 +21,15 @@
       {% endfor %}
     </select>
   </label>
+  <label class="wide">Photo
+    {% if b and b.photo %}
+    <span class="current">
+      <img src="{{ url_for('photo', name=b.photo) }}" alt="" width="64" height="64">
+      <span class="check"><input type="checkbox" name="remove_photo" value="1"> Remove this photo</span>
+    </span>
+    {% endif %}
+    <input type="file" name="photo" accept="image/*">
+  </label>
   <label class="wide">Review
     <textarea name="review" rows="3" placeholder="Aroma, taste, finish…">{{ b.review or '' if b else '' }}</textarea>
   </label>

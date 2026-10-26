@@ -26,6 +26,9 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      UPLOAD_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
     ports:
       - "8080:5000"
     depends_on:
@@ -34,3 +37,5 @@ services:
 
 volumes:
   db_data:
+  uploads:
+

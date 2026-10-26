@@ -1,16 +1,28 @@
 import hmac
 import os
 import time
+import uuid
 from datetime import date
 from functools import wraps
 
 import pymysql
 from flask import (Flask, abort, flash, redirect, render_template, request,
-                   session, url_for)
+                   send_from_directory, session, url_for)
+from PIL import Image, ImageOps
 
 app = Flask(__name__)
+for _v in ("SECRET_KEY", "ADMIN_USER", "ADMIN_PASSWORD"):
+    if not os.environ.get(_v):
+        raise SystemExit(f"Missing {_v}: set it in .env and run 'docker compose up -d --build'")
 app.secret_key = os.environ["SECRET_KEY"]
-app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True)
+app.config.update(
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_HTTPONLY=True,
+    MAX_CONTENT_LENGTH=15 * 1024 * 1024,
+)
+
+UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/data/uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 ADMIN_USER = os.environ["ADMIN_USER"]
 ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
@@ -83,6 +95,9 @@ def init_db():
         try:
             with db() as c, c.cursor() as cur:
                 cur.execute(SCHEMA)
+                cur.execute(
+                    "ALTER TABLE beers ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NULL"
+                )
             return
         except pymysql.err.OperationalError:
             time.sleep(2)
@@ -132,14 +147,44 @@ def index():
     )
 
 
+def save_photo(file):
+    """Validate, resize and store an uploaded image. Returns filename or None."""
+    if not file or not file.filename:
+        return None
+    try:
+        img = Image.open(file.stream)
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        img.thumbnail((1200, 1200))
+    except Exception:
+        flash("That file isn't a valid image, so the photo was skipped.")
+        return None
+    name = uuid.uuid4().hex + ".jpg"
+    img.save(os.path.join(UPLOAD_DIR, name), "JPEG", quality=85)
+    return name
+
+
+def remove_photo(name):
+    if name:
+        try:
+            os.remove(os.path.join(UPLOAD_DIR, os.path.basename(name)))
+        except FileNotFoundError:
+            pass
+
+
+@app.route("/uploads/<path:name>")
+def photo(name):
+    return send_from_directory(UPLOAD_DIR, name, max_age=86400)
+
+
 @app.post("/add")
 @login_required
 def add():
+    photo_name = save_photo(request.files.get("photo"))
     with db() as c, c.cursor() as cur:
         cur.execute(
-            "INSERT INTO beers (name, brewery, style, abv, rating, review, tasted_on)"
-            " VALUES (%s,%s,%s,%s,%s,%s,%s)",
-            form_data(),
+            "INSERT INTO beers (name, brewery, style, abv, rating, review, tasted_on, photo)"
+            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            (*form_data(), photo_name),
         )
     return redirect(url_for("index"))
 
@@ -148,17 +193,26 @@ def add():
 @login_required
 def edit(beer_id):
     with db() as c, c.cursor() as cur:
-        if request.method == "POST":
-            cur.execute(
-                "UPDATE beers SET name=%s, brewery=%s, style=%s, abv=%s,"
-                " rating=%s, review=%s, tasted_on=%s WHERE id=%s",
-                (*form_data(), beer_id),
-            )
-            return redirect(url_for("index"))
         cur.execute("SELECT * FROM beers WHERE id=%s", (beer_id,))
         beer = cur.fetchone()
-    if not beer:
-        abort(404)
+        if not beer:
+            abort(404)
+        if request.method == "POST":
+            old = beer["photo"]
+            new = save_photo(request.files.get("photo"))
+            keep = old
+            if new:
+                keep = new
+            elif request.form.get("remove_photo"):
+                keep = None
+            cur.execute(
+                "UPDATE beers SET name=%s, brewery=%s, style=%s, abv=%s,"
+                " rating=%s, review=%s, tasted_on=%s, photo=%s WHERE id=%s",
+                (*form_data(), keep, beer_id),
+            )
+            if keep != old:
+                remove_photo(old)
+            return redirect(url_for("index"))
     return render_template("edit.html", b=beer)
 
 
@@ -166,5 +220,9 @@ def edit(beer_id):
 @login_required
 def delete(beer_id):
     with db() as c, c.cursor() as cur:
+        cur.execute("SELECT photo FROM beers WHERE id=%s", (beer_id,))
+        row = cur.fetchone()
         cur.execute("DELETE FROM beers WHERE id=%s", (beer_id,))
+    if row:
+        remove_photo(row["photo"])
     return redirect(url_for("index"))

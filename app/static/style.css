@@ -59,3 +59,16 @@ a:hover, .link:hover { text-decoration: underline; }
 .narrow { max-width: 380px; }
 .error { color: #b3361f; margin: 0 0 .8rem; }
 @media (prefers-color-scheme: dark) { .error { color: #ef8a73; } }
+
+.beers li { display: flex; gap: 1rem; }
+.beers .body { flex: 1; min-width: 0; }
+.thumb img { display: block; width: 96px; height: 96px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.current { display: flex; align-items: center; gap: .8rem; margin: .2rem 0; }
+.current img { object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+.check { display: flex; align-items: center; gap: .4rem; }
+input[type=file] { padding: .4rem; }
+@media (max-width: 520px) {
+  .beers li { flex-wrap: wrap; }
+  .thumb img { width: 72px; height: 72px; }
+  .beers .actions { flex-direction: row; width: 100%; }
+}
