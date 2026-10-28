@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Beer log</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Beer log</h1>
+    <p class="count">{{ stats.n }} tasted{% if stats.n %}, average {{ stats.avg }}/5{% endif %}</p>
+    <div class="auth">
+      {% if user %}
+      <form method="post" action="{{ url_for('logout') }}"><button class="link">Log out ({{ user }})</button></form>
+      {% else %}
+      <a href="{{ url_for('login') }}">Log in to add reviews</a>
+      {% endif %}
+    </div>
+  </header>
+
+  {% for m in get_flashed_messages() %}<p class="error">{{ m }}</p>{% endfor %}
+
+  {% if user %}
+  <details class="add" {{ 'open' if not beers and not q }}>
+    <summary>Log a beer</summary>
+    <form method="post" action="{{ url_for('add') }}" enctype="multipart/form-data">
+      {% set b = none %}
+      {% include "_form.html" %}
+      <button class="primary">Save beer</button>
+    </form>
+  </details>
+  {% endif %}
+
+  <form class="filter" method="get">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search name, brewery or style">
+    <select name="sort" onchange="this.form.submit()">
+      <option value="recent" {{ 'selected' if sort=='recent' }}>Newest first</option>
+      <option value="rating" {{ 'selected' if sort=='rating' }}>Best rated</option>
+      <option value="name" {{ 'selected' if sort=='name' }}>A to Z</option>
+    </select>
+  </form>
+
+  {% if not beers %}
+    <p class="empty">{{ 'No beer matches that search.' if q else 'Nothing logged yet. Log in to add the first beer.' }}</p>
+  {% endif %}
+
+  <ul class="beers">
+  {% for b in beers %}
+    <li>
+      <div class="pips" title="{{ b.rating }} / 5" aria-label="{{ b.rating }} out of 5">
+        {% for i in range(1,6) %}<span class="{{ 'on' if i <= b.rating }}"></span>{% endfor %}
+      </div>
+      {% if b.photo %}<a class="thumb" href="{{ url_for('photo', name=b.photo) }}"><img src="{{ url_for('photo', name=b.photo) }}" alt="{{ b.name }}" loading="lazy"></a>{% endif %}
+      <div class="body">
+        <h2>{{ b.name }}</h2>
+        <p class="meta">
+          {{ [b.brewery, b.style,
+            ('%s%%' % b.abv) if b.abv is not none else None,
+            ('%s IBU' % b.ibu) if b.ibu is not none else None,
+            ('serve %g°C' % b.serve_temp) if b.serve_temp is not none else None,
+            b.tasted_on.strftime('%d %b %Y')] | select | join(' · ') }}
+        </p>
+        {% if b.review %}<p class="review">{{ b.review }}</p>{% endif %}
+      </div>
+      {% if user %}<div class="actions">
+        <a href="{{ url_for('edit', beer_id=b.id) }}">Edit</a>
+        <form method="post" action="{{ url_for('delete', beer_id=b.id) }}"
+              onsubmit="return confirm('Delete {{ b.name|replace("'", "")|e }}?')">
+          <button class="link">Delete</button>
+        </form>
+      </div>{% endif %}
+    </li>
+  {% endfor %}
+  </ul>
+</main>
+</body>
+</html>
