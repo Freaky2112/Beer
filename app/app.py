@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS beers (
     brewery VARCHAR(150),
     style VARCHAR(80),
     abv DECIMAL(4,1),
-    rating TINYINT NOT NULL DEFAULT 3,
+    rating DECIMAL(3,1) NOT NULL DEFAULT 7.0,
     review TEXT,
     tasted_on DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -124,6 +124,16 @@ def init_db():
                 )
                 if cur.rowcount == 1:
                     cur.execute("UPDATE beers SET rating = rating * 2")
+                # Allow half points (7.5): widen the column if it is still an integer type.
+                cur.execute(
+                    "SELECT DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()"
+                    " AND TABLE_NAME = 'beers' AND COLUMN_NAME = 'rating'"
+                )
+                col = cur.fetchone()
+                if col and col["DATA_TYPE"].lower() != "decimal":
+                    cur.execute(
+                        "ALTER TABLE beers MODIFY rating DECIMAL(3,1) NOT NULL DEFAULT 7.0"
+                    )
                 cur.execute(
                     "ALTER TABLE beers ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NULL"
                 )
@@ -150,6 +160,14 @@ def num(value, cast):
         return None
 
 
+def rating_from(value):
+    """1-10 scale in half points; blank or invalid falls back to 7."""
+    r = num(value, float)
+    if r is None:
+        return 7.0
+    return min(max(round(r * 2) / 2, 0.5), 10.0)
+
+
 def form_data():
     f = request.form
     return (
@@ -157,7 +175,7 @@ def form_data():
         f.get("brewery", "").strip() or None,
         f.get("style", "").strip() or None,
         num(f.get("abv"), float),
-        min(max(num(f.get("rating"), int) or 7, 1), 10),
+        rating_from(f.get("rating")),
         f.get("review", "").strip() or None,
         f.get("tasted_on") or date.today().isoformat(),
         num(f.get("ibu"), lambda v: int(float(v))),

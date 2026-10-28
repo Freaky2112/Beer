@@ -94,7 +94,7 @@
   <ul class="beers">
   {% for b in beers %}
     <li>
-      <div class="score" title="{{ b.rating }} out of 10" aria-label="{{ b.rating }} out of 10"><strong>{{ b.rating }}</strong><small>/10</small></div>
+      <div class="score" title="{{ '%g' % b.rating }} out of 10" aria-label="{{ '%g' % b.rating }} out of 10"><strong>{{ '%g' % b.rating }}</strong><small>/10</small></div>
       {% if b.photo %}<a class="thumb" href="{{ url_for('photo', name=b.photo) }}"><img src="{{ url_for('photo', name=b.photo) }}" alt="{{ b.name }}" loading="lazy"></a>{% endif %}
       <div class="body">
         <h2>{{ b.name }}</h2>
