@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Beer log</title>
+  <title>Freaky Beer Log</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <main>
   <header>
-    <h1>Beer log</h1>
+    <h1>Freaky Beer log</h1>
     <p class="count">{{ stats.n }} tasted{% if stats.n %}, average {{ stats.avg }}/5{% endif %}</p>
     <div class="auth">
       {% if user %}
