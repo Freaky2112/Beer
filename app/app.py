@@ -18,6 +18,7 @@ app.secret_key = os.environ["SECRET_KEY"]
 app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE") == "1",
     MAX_CONTENT_LENGTH=15 * 1024 * 1024,
 )
 
@@ -98,6 +99,12 @@ def init_db():
                 cur.execute(
                     "ALTER TABLE beers ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NULL"
                 )
+                cur.execute(
+                    "ALTER TABLE beers ADD COLUMN IF NOT EXISTS ibu SMALLINT NULL"
+                )
+                cur.execute(
+                    "ALTER TABLE beers ADD COLUMN IF NOT EXISTS serve_temp DECIMAL(4,1) NULL"
+                )
             return
         except pymysql.err.OperationalError:
             time.sleep(2)
@@ -107,17 +114,26 @@ def init_db():
 init_db()
 
 
+def num(value, cast):
+    value = (value or "").strip().replace(",", ".")
+    try:
+        return cast(value) if value else None
+    except ValueError:
+        return None
+
+
 def form_data():
     f = request.form
-    abv = f.get("abv", "").strip().replace(",", ".")
     return (
         f["name"].strip(),
         f.get("brewery", "").strip() or None,
         f.get("style", "").strip() or None,
-        float(abv) if abv else None,
+        num(f.get("abv"), float),
         min(max(int(f.get("rating", 3)), 1), 5),
         f.get("review", "").strip() or None,
         f.get("tasted_on") or date.today().isoformat(),
+        num(f.get("ibu"), lambda v: int(float(v))),
+        num(f.get("serve_temp"), float),
     )
 
 
@@ -182,8 +198,8 @@ def add():
     photo_name = save_photo(request.files.get("photo"))
     with db() as c, c.cursor() as cur:
         cur.execute(
-            "INSERT INTO beers (name, brewery, style, abv, rating, review, tasted_on, photo)"
-            " VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO beers (name, brewery, style, abv, rating, review, tasted_on,"
+            " ibu, serve_temp, photo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (*form_data(), photo_name),
         )
     return redirect(url_for("index"))
@@ -207,7 +223,8 @@ def edit(beer_id):
                 keep = None
             cur.execute(
                 "UPDATE beers SET name=%s, brewery=%s, style=%s, abv=%s,"
-                " rating=%s, review=%s, tasted_on=%s, photo=%s WHERE id=%s",
+                " rating=%s, review=%s, tasted_on=%s, ibu=%s, serve_temp=%s,"
+                " photo=%s WHERE id=%s",
                 (*form_data(), keep, beer_id),
             )
             if keep != old:
