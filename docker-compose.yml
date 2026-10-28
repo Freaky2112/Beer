@@ -30,7 +30,7 @@ services:
     volumes:
       - uploads:/data/uploads
     ports:
-      - "8080:5000"
+      - "5000:5000"
     depends_on:
       db:
         condition: service_healthy

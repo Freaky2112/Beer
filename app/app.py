@@ -40,7 +40,7 @@ def login_required(f):
 
 @app.context_processor
 def inject_user():
-    return {"user": session.get("user")}
+    return {"user": session.get("user"), "PRESET_TAGS": PRESET_TAGS}
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -63,6 +63,22 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("index"))
+
+PRESET_TAGS = [
+    "citrus", "tropical", "fruity", "floral", "piney", "hoppy", "bitter",
+    "malty", "caramel", "toasty", "roasty", "coffee", "chocolate", "smoky",
+    "spicy", "sweet", "sour", "funky", "dry", "creamy",
+]
+
+TAGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS beer_tags (
+    beer_id INT NOT NULL,
+    tag VARCHAR(30) NOT NULL,
+    PRIMARY KEY (beer_id, tag),
+    KEY idx_tag (tag),
+    FOREIGN KEY (beer_id) REFERENCES beers(id) ON DELETE CASCADE
+) CHARACTER SET utf8mb4
+"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS beers (
@@ -96,6 +112,7 @@ def init_db():
         try:
             with db() as c, c.cursor() as cur:
                 cur.execute(SCHEMA)
+                cur.execute(TAGS_SCHEMA)
                 cur.execute(
                     "ALTER TABLE beers ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NULL"
                 )
@@ -137,28 +154,112 @@ def form_data():
     )
 
 
+def parse_tags():
+    raw = request.form.getlist("tags")
+    raw += request.form.get("custom_tags", "").split(",")
+    seen, out = set(), []
+    for t in raw:
+        t = " ".join(t.lower().split())[:30]
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out[:15]
+
+
+def set_tags(cur, beer_id, tags):
+    cur.execute("DELETE FROM beer_tags WHERE beer_id=%s", (beer_id,))
+    if tags:
+        cur.executemany(
+            "INSERT INTO beer_tags (beer_id, tag) VALUES (%s,%s)",
+            [(beer_id, t) for t in tags],
+        )
+
+
+def valid_date(v):
+    try:
+        return date.fromisoformat(v).isoformat()
+    except ValueError:
+        return ""
+
+
+SORTS = {
+    "recent": "tasted_on DESC, id DESC",
+    "rating": "rating DESC, tasted_on DESC",
+    "name": "name ASC",
+    "abv": "abv DESC, name ASC",
+    "ibu": "ibu DESC, name ASC",
+}
+
+
 @app.route("/")
 def index():
-    q = request.args.get("q", "").strip()
-    sort = request.args.get("sort", "recent")
-    order = {
-        "recent": "tasted_on DESC, id DESC",
-        "rating": "rating DESC, tasted_on DESC",
-        "name": "name ASC",
-    }.get(sort, "tasted_on DESC, id DESC")
-    sql = "SELECT * FROM beers"
-    args = []
+    a = request.args
+    q = a.get("q", "").strip()
+    sort = a.get("sort", "recent")
+    if sort not in SORTS:
+        sort = "recent"
+    style = a.get("style", "").strip()
+    min_rating = num(a.get("min_rating"), int) or 0
+    date_from = valid_date(a.get("date_from", ""))
+    date_to = valid_date(a.get("date_to", ""))
+    sel_tags = []
+    for t in a.getlist("tag"):
+        t = " ".join(t.lower().split())
+        if t and t not in sel_tags:
+            sel_tags.append(t)
+
+    where, args = [], []
     if q:
-        sql += " WHERE name LIKE %s OR brewery LIKE %s OR style LIKE %s"
-        args = [f"%{q}%"] * 3
-    sql += f" ORDER BY {order}"
+        where.append("(name LIKE %s OR brewery LIKE %s OR style LIKE %s)")
+        args += [f"%{q}%"] * 3
+    if style:
+        where.append("style = %s")
+        args.append(style)
+    if min_rating:
+        where.append("rating >= %s")
+        args.append(min_rating)
+    if date_from:
+        where.append("tasted_on >= %s")
+        args.append(date_from)
+    if date_to:
+        where.append("tasted_on <= %s")
+        args.append(date_to)
+    for t in sel_tags:
+        where.append(
+            "EXISTS (SELECT 1 FROM beer_tags bt WHERE bt.beer_id = beers.id AND bt.tag = %s)"
+        )
+        args.append(t)
+    filtered = bool(where)
+
+    sql = "SELECT * FROM beers"
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY " + SORTS[sort]
+
     with db() as c, c.cursor() as cur:
         cur.execute(sql, args)
         beers = cur.fetchall()
+        tagmap = {}
+        if beers:
+            marks = ",".join(["%s"] * len(beers))
+            cur.execute(
+                f"SELECT beer_id, tag FROM beer_tags WHERE beer_id IN ({marks}) ORDER BY tag",
+                [b["id"] for b in beers],
+            )
+            for row in cur.fetchall():
+                tagmap.setdefault(row["beer_id"], []).append(row["tag"])
         cur.execute("SELECT COUNT(*) n, ROUND(AVG(rating),1) avg FROM beers")
         stats = cur.fetchone()
+        cur.execute(
+            "SELECT DISTINCT style FROM beers WHERE style IS NOT NULL AND style <> '' ORDER BY style"
+        )
+        styles = [r["style"] for r in cur.fetchall()]
+        cur.execute("SELECT tag, COUNT(*) n FROM beer_tags GROUP BY tag ORDER BY tag")
+        tag_counts = cur.fetchall()
     return render_template(
-        "index.html", beers=beers, stats=stats, q=q, sort=sort,
+        "index.html", beers=beers, tagmap=tagmap, stats=stats, q=q, sort=sort,
+        style=style, min_rating=min_rating, date_from=date_from, date_to=date_to,
+        sel_tags=sel_tags, filtered=filtered, styles=styles, tag_counts=tag_counts,
         today=date.today().isoformat(),
     )
 
@@ -202,6 +303,7 @@ def add():
             " ibu, serve_temp, photo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (*form_data(), photo_name),
         )
+        set_tags(cur, cur.lastrowid, parse_tags())
     return redirect(url_for("index"))
 
 
@@ -227,9 +329,12 @@ def edit(beer_id):
                 " photo=%s WHERE id=%s",
                 (*form_data(), keep, beer_id),
             )
+            set_tags(cur, beer_id, parse_tags())
             if keep != old:
                 remove_photo(old)
             return redirect(url_for("index"))
+        cur.execute("SELECT tag FROM beer_tags WHERE beer_id=%s ORDER BY tag", (beer_id,))
+        beer["tags"] = [r["tag"] for r in cur.fetchall()]
     return render_template("edit.html", b=beer)
 
 

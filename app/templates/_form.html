@@ -27,6 +27,19 @@
       {% endfor %}
     </select>
   </label>
+  {% set sel = (b.tags if b and b.tags else []) %}
+  <fieldset class="wide tagbox">
+    <legend>Flavour tags</legend>
+    <div class="chips">
+      {% for t in PRESET_TAGS %}
+      <label class="chip"><input type="checkbox" name="tags" value="{{ t }}" {{ 'checked' if t in sel }}><span>{{ t }}</span></label>
+      {% endfor %}
+      {% for t in sel if t not in PRESET_TAGS %}
+      <label class="chip"><input type="checkbox" name="tags" value="{{ t }}" checked><span>{{ t }}</span></label>
+      {% endfor %}
+    </div>
+    <input name="custom_tags" placeholder="Other tags, separated by commas (e.g. vanilla, oak)">
+  </fieldset>
   <label class="wide">Photo
     {% if b and b.photo %}
     <span class="current">

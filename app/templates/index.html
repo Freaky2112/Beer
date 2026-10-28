@@ -23,7 +23,7 @@
   {% for m in get_flashed_messages() %}<p class="error">{{ m }}</p>{% endfor %}
 
   {% if user %}
-  <details class="add" {{ 'open' if not beers and not q }}>
+  <details class="add" {{ 'open' if not beers and not filtered }}>
     <summary>Log a beer</summary>
     <form method="post" action="{{ url_for('add') }}" enctype="multipart/form-data">
       {% set b = none %}
@@ -33,17 +33,62 @@
   </details>
   {% endif %}
 
-  <form class="filter" method="get">
-    <input type="search" name="q" value="{{ q }}" placeholder="Search name, brewery or style">
-    <select name="sort" onchange="this.form.submit()">
-      <option value="recent" {{ 'selected' if sort=='recent' }}>Newest first</option>
-      <option value="rating" {{ 'selected' if sort=='rating' }}>Best rated</option>
-      <option value="name" {{ 'selected' if sort=='name' }}>A to Z</option>
-    </select>
-  </form>
+  <details class="filters" {{ 'open' if filtered }}>
+    <summary>Search &amp; filters{% if filtered %} <span class="badge">active</span>{% endif %}</summary>
+    <form method="get" onchange="this.form.submit()">
+      <div class="grid">
+        <label class="wide">Search
+          <input type="search" name="q" value="{{ q }}" placeholder="Name, brewery or style">
+        </label>
+        <label>Style
+          <select name="style">
+            <option value="">All styles</option>
+            {% for st in styles %}<option value="{{ st }}" {{ 'selected' if st == style }}>{{ st }}</option>{% endfor %}
+          </select>
+        </label>
+        <label>Minimum rating
+          <select name="min_rating">
+            <option value="">Any</option>
+            {% for n in [2,3,4,5] %}<option value="{{ n }}" {{ 'selected' if n == min_rating }}>{{ n }}+ / 5</option>{% endfor %}
+          </select>
+        </label>
+        <label>Tasted from
+          <input type="date" name="date_from" value="{{ date_from }}">
+        </label>
+        <label>Tasted until
+          <input type="date" name="date_to" value="{{ date_to }}">
+        </label>
+        <label>Sort by
+          <select name="sort">
+            <option value="recent" {{ 'selected' if sort=='recent' }}>Newest first</option>
+            <option value="rating" {{ 'selected' if sort=='rating' }}>Best rated</option>
+            <option value="name" {{ 'selected' if sort=='name' }}>A to Z</option>
+            <option value="abv" {{ 'selected' if sort=='abv' }}>Strongest (ABV)</option>
+            <option value="ibu" {{ 'selected' if sort=='ibu' }}>Most bitter (IBU)</option>
+          </select>
+        </label>
+        {% if tag_counts %}
+        <fieldset class="wide tagbox">
+          <legend>Flavour tags <small>(must have all selected)</small></legend>
+          <div class="chips">
+            {% for t in tag_counts %}
+            <label class="chip"><input type="checkbox" name="tag" value="{{ t.tag }}" {{ 'checked' if t.tag in sel_tags }}><span>{{ t.tag }} <small>{{ t.n }}</small></span></label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        {% endif %}
+      </div>
+      <div class="row">
+        <button class="primary">Apply</button>
+        <a href="{{ url_for('index') }}">Reset</a>
+      </div>
+    </form>
+  </details>
+
+  {% if filtered %}<p class="count result">{{ beers|length }} of {{ stats.n }} beers match</p>{% endif %}
 
   {% if not beers %}
-    <p class="empty">{{ 'No beer matches that search.' if q else 'Nothing logged yet. Log in to add the first beer.' }}</p>
+    <p class="empty">{{ 'No beer matches those filters.' if filtered else 'Nothing logged yet. Log in to add the first beer.' }}</p>
   {% endif %}
 
   <ul class="beers">
@@ -62,6 +107,7 @@
             ('serve %g°C' % b.serve_temp) if b.serve_temp is not none else None,
             b.tasted_on.strftime('%d %b %Y')] | select | join(' · ') }}
         </p>
+        {% if tagmap.get(b.id) %}<p class="tags">{% for t in tagmap[b.id] %}<a class="tag {{ 'on' if t in sel_tags }}" href="{{ url_for('index', tag=t) }}">{{ t }}</a>{% endfor %}</p>{% endif %}
         {% if b.review %}<p class="review">{{ b.review }}</p>{% endif %}
       </div>
       {% if user %}<div class="actions">
