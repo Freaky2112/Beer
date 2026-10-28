@@ -1,5 +1,5 @@
 <div class="grid">
-  <label class="wide">Beer
+  <label>Beer
     <input name="name" required value="{{ b.name if b else '' }}" placeholder="Name of the beer">
   </label>
   <label>Brewery
@@ -10,6 +10,12 @@
   </label>
   <label>ABV %
     <input name="abv" inputmode="decimal" value="{{ b.abv or '' if b else '' }}" placeholder="5.5">
+  </label>
+  <label>IBU (bitterness)
+    <input type="number" name="ibu" min="0" max="200" step="1" value="{{ b.ibu if b and b.ibu is not none else '' }}" placeholder="35">
+  </label>
+  <label>Serving temp °C
+    <input name="serve_temp" inputmode="decimal" value="{{ ('%g' % b.serve_temp) if b and b.serve_temp is not none else '' }}" placeholder="6">
   </label>
   <label>Tasted on
     <input type="date" name="tasted_on" value="{{ b.tasted_on if b else today }}">

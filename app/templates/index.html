@@ -56,7 +56,11 @@
       <div class="body">
         <h2>{{ b.name }}</h2>
         <p class="meta">
-          {{ [b.brewery, b.style, ('%s%%' % b.abv) if b.abv else None, b.tasted_on.strftime('%d %b %Y')] | select | join(', ') }}
+          {{ [b.brewery, b.style,
+            ('%s%%' % b.abv) if b.abv is not none else None,
+            ('%s IBU' % b.ibu) if b.ibu is not none else None,
+            ('serve %g°C' % b.serve_temp) if b.serve_temp is not none else None,
+            b.tasted_on.strftime('%d %b %Y')] | select | join(' · ') }}
         </p>
         {% if b.review %}<p class="review">{{ b.review }}</p>{% endif %}
       </div>
