@@ -114,6 +114,17 @@ def init_db():
                 cur.execute(SCHEMA)
                 cur.execute(TAGS_SCHEMA)
                 cur.execute(
+                    "CREATE TABLE IF NOT EXISTS app_meta ("
+                    "k VARCHAR(50) PRIMARY KEY, v VARCHAR(50) NOT NULL)"
+                )
+                # Old installs used a 1-5 scale: double those ratings exactly once.
+                # INSERT IGNORE affects 1 row only for the worker that wins the race.
+                cur.execute(
+                    "INSERT IGNORE INTO app_meta (k, v) VALUES ('rating_scale', '10')"
+                )
+                if cur.rowcount == 1:
+                    cur.execute("UPDATE beers SET rating = rating * 2")
+                cur.execute(
                     "ALTER TABLE beers ADD COLUMN IF NOT EXISTS photo VARCHAR(64) NULL"
                 )
                 cur.execute(
@@ -146,7 +157,7 @@ def form_data():
         f.get("brewery", "").strip() or None,
         f.get("style", "").strip() or None,
         num(f.get("abv"), float),
-        min(max(int(f.get("rating", 3)), 1), 5),
+        min(max(num(f.get("rating"), int) or 7, 1), 10),
         f.get("review", "").strip() or None,
         f.get("tasted_on") or date.today().isoformat(),
         num(f.get("ibu"), lambda v: int(float(v))),

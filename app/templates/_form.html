@@ -22,8 +22,8 @@
   </label>
   <label>Rating
     <select name="rating">
-      {% for n in [5,4,3,2,1] %}
-      <option value="{{ n }}" {{ 'selected' if (b.rating if b else 3) == n }}>{{ n }} / 5</option>
+      {% for n in range(10, 0, -1) %}
+      <option value="{{ n }}" {{ 'selected' if (b.rating if b else 7) == n }}>{{ n }} / 10</option>
       {% endfor %}
     </select>
   </label>

@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Freaky Beer Log</title>
+  <title>Beer log</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <main>
   <header>
-    <h1>Freaky Beer log</h1>
-    <p class="count">{{ stats.n }} tasted{% if stats.n %}, average {{ stats.avg }}/5{% endif %}</p>
+    <h1>Beer log</h1>
+    <p class="count">{{ stats.n }} tasted{% if stats.n %}, average {{ stats.avg }}/10{% endif %}</p>
     <div class="auth">
       {% if user %}
       <form method="post" action="{{ url_for('logout') }}"><button class="link">Log out ({{ user }})</button></form>
@@ -49,7 +49,7 @@
         <label>Minimum rating
           <select name="min_rating">
             <option value="">Any</option>
-            {% for n in [2,3,4,5] %}<option value="{{ n }}" {{ 'selected' if n == min_rating }}>{{ n }}+ / 5</option>{% endfor %}
+            {% for n in range(4, 11) %}<option value="{{ n }}" {{ 'selected' if n == min_rating }}>{{ n }}+ / 10</option>{% endfor %}
           </select>
         </label>
         <label>Tasted from
@@ -94,9 +94,7 @@
   <ul class="beers">
   {% for b in beers %}
     <li>
-      <div class="pips" title="{{ b.rating }} / 5" aria-label="{{ b.rating }} out of 5">
-        {% for i in range(1,6) %}<span class="{{ 'on' if i <= b.rating }}"></span>{% endfor %}
-      </div>
+      <div class="score" title="{{ b.rating }} out of 10" aria-label="{{ b.rating }} out of 10"><strong>{{ b.rating }}</strong><small>/10</small></div>
       {% if b.photo %}<a class="thumb" href="{{ url_for('photo', name=b.photo) }}"><img src="{{ url_for('photo', name=b.photo) }}" alt="{{ b.name }}" loading="lazy"></a>{% endif %}
       <div class="body">
         <h2>{{ b.name }}</h2>

@@ -113,3 +113,8 @@ fieldset.tagbox { border: 0; margin: 0; padding: 0; min-width: 0; }
 a.tag { font-size: .78rem; border: 1px solid var(--line); border-radius: 99px; padding: 0 .55rem; color: var(--soft); }
 a.tag:hover { border-color: var(--hop); color: var(--hop); text-decoration: none; }
 a.tag.on { background: var(--hop); border-color: var(--hop); color: var(--on-hop); }
+
+/* rating as a number out of 10 */
+.score { width: 3rem; flex: none; text-align: center; color: var(--amber); line-height: 1; padding-top: .15rem; }
+.score strong { display: block; font: 700 1.9rem/1 var(--serif); }
+.score small { font-size: .75rem; color: var(--soft); }
