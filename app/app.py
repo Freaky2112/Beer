@@ -1,4 +1,5 @@
 import hmac
+import json
 import os
 import time
 import uuid
@@ -6,8 +7,8 @@ from datetime import date
 from functools import wraps
 
 import pymysql
-from flask import (Flask, abort, flash, redirect, render_template, request,
-                   send_from_directory, session, url_for)
+from flask import (Flask, Response, abort, flash, redirect, render_template,
+                   request, send_from_directory, session, url_for)
 from PIL import Image, ImageOps
 
 app = Flask(__name__)
@@ -41,6 +42,21 @@ def login_required(f):
 @app.context_processor
 def inject_user():
     return {"user": session.get("user"), "PRESET_TAGS": PRESET_TAGS}
+
+
+@app.route("/manifest.webmanifest")
+def manifest():
+    icons = [
+        {"src": url_for("static", filename=f"icon-{n}.png"), "sizes": f"{n}x{n}",
+         "type": "image/png", "purpose": "any maskable"}
+        for n in (192, 512)
+    ]
+    data = {
+        "name": "Beer log", "short_name": "Beer log", "start_url": "/", "scope": "/",
+        "display": "standalone", "background_color": "#17201a", "theme_color": "#17201a",
+        "icons": icons,
+    }
+    return Response(json.dumps(data), mimetype="application/manifest+json")
 
 
 @app.route("/login", methods=["GET", "POST"])

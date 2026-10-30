@@ -118,3 +118,76 @@ a.tag.on { background: var(--hop); border-color: var(--hop); color: var(--on-hop
 .score { width: 3rem; flex: none; text-align: center; color: var(--amber); line-height: 1; padding-top: .15rem; }
 .score strong { display: block; font: 700 1.9rem/1 var(--serif); }
 .score small { font-size: .75rem; color: var(--soft); }
+
+/* ---------- phone friendly ---------- */
+html { -webkit-text-size-adjust: 100%; }
+a, button, summary, .chip { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+main {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+}
+.grid > * { min-width: 0; }
+input, select, textarea { min-width: 0; max-width: 100%; }
+.fab { display: none; }
+
+@media (max-width: 640px) {
+  main { padding-top: 1.2rem; padding-bottom: calc(6.5rem + env(safe-area-inset-bottom)); }
+  h1 { font-size: 2rem; }
+  header { gap: .3rem 1rem; margin-bottom: 1rem; }
+  header h1 { flex: 1; }
+  header .auth { order: 2; }
+  header .count { order: 3; width: 100%; }
+
+  /* big, thumb-sized controls (16px text also stops iOS zooming into fields) */
+  input, select, button.primary { min-height: 44px; }
+  textarea { min-height: 6rem; }
+  input[type=file] { min-height: 0; }
+  .primary { padding: .7rem 1.2rem; }
+  .add, .filters { padding: 0 .9rem; }
+  .add summary, .filters summary { padding: 1rem 0; font-size: 1.05rem; }
+  .row { gap: 1rem; }
+  .row .primary { flex: 1; }
+  .row a, .auth a, .auth .link { display: inline-flex; align-items: center; min-height: 44px; }
+
+  /* forms: pairs of short fields side by side */
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem .7rem; }
+  .fgrid > label:nth-child(-n+3) { grid-column: 1 / -1; }
+  .chip span { padding: .4rem .85rem; font-size: .92rem; }
+  a.tag { padding: .2rem .7rem; font-size: .82rem; }
+
+  /* list rows: score | details | photo, then Edit / Delete underneath */
+  .beers li {
+    display: grid; grid-template-columns: 3rem minmax(0, 1fr) auto;
+    grid-template-areas: "score body thumb" "actions actions actions";
+    gap: .6rem .9rem; padding: 1rem 0;
+  }
+  .score { grid-area: score; width: auto; }
+  .beers .body { grid-area: body; }
+  .thumb { grid-area: thumb; }
+  .thumb img { width: 68px; height: 68px; }
+  .beers .actions { grid-area: actions; flex-direction: row; justify-content: flex-start; align-items: stretch; gap: .6rem; width: auto; }
+  .actions a, .actions .link {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 0 1.1rem;
+    border: 1px solid var(--line); border-radius: 6px; background: var(--paper); font-size: .9rem;
+  }
+  .actions .link { color: var(--soft); }
+
+  /* floating "log a beer" button */
+  .fab {
+    display: grid; place-items: center; position: fixed; z-index: 5;
+    right: max(1rem, env(safe-area-inset-right)); bottom: calc(1rem + env(safe-area-inset-bottom));
+    width: 56px; height: 56px; border-radius: 50%; background: var(--hop); color: var(--on-hop);
+    font: 400 2rem/1 var(--sans); box-shadow: 0 4px 14px rgba(0, 0, 0, .3);
+  }
+  .fab:hover { text-decoration: none; }
+}
+@media (max-width: 340px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .add, .filters { margin-bottom: .8rem; }
+  .fgrid > label:nth-child(8) { grid-column: 1 / -1; }
+  body::before, body::after { opacity: .06; }
+}
