@@ -17,16 +17,14 @@
     <p class="count">{{ stats.n }} tasted{% if stats.n %}, average {{ stats.avg }}/10{% endif %}</p>
     <div class="auth">
       {% if user %}
-      <a href="{{ url_for('account') }}">{{ user.username }}</a>
-      {% if user.is_admin %}<a href="{{ url_for('admin_users') }}">Users</a>{% endif %}
-      <form method="post" action="{{ url_for('logout') }}"><button class="link">Log out</button></form>
+      <form method="post" action="{{ url_for('logout') }}"><button class="link">Log out ({{ user }})</button></form>
       {% else %}
       <a href="{{ url_for('login') }}">Log in to add reviews</a>
       {% endif %}
     </div>
   </header>
 
-  {% include "_flash.html" %}
+  {% for m in get_flashed_messages() %}<p class="error">{{ m }}</p>{% endfor %}
 
   {% if user %}
   <details class="add" id="add" {{ 'open' if not beers and not filtered }}>
@@ -64,14 +62,6 @@
         <label>Tasted until
           <input type="date" name="date_to" value="{{ date_to }}">
         </label>
-        {% if authors|length > 1 %}
-        <label>Tasted by
-          <select name="by">
-            <option value="">Everyone</option>
-            {% for a in authors %}<option value="{{ a }}" {{ 'selected' if a == by }}>{{ a }}</option>{% endfor %}
-          </select>
-        </label>
-        {% endif %}
         <label>Sort by
           <select name="sort">
             <option value="recent" {{ 'selected' if sort=='recent' }}>Newest first</option>
@@ -117,13 +107,12 @@
             ('%s%%' % b.abv) if b.abv is not none else None,
             ('%s IBU' % b.ibu) if b.ibu is not none else None,
             ('serve %g°C' % b.serve_temp) if b.serve_temp is not none else None,
-            b.tasted_on.strftime('%d %b %Y'),
-            ('by %s' % b.author) if b.author else None] | select | join(' · ') }}
+            b.tasted_on.strftime('%d %b %Y')] | select | join(' · ') }}
         </p>
         {% if tagmap.get(b.id) %}<p class="tags">{% for t in tagmap[b.id] %}<a class="tag {{ 'on' if t in sel_tags }}" href="{{ url_for('index', tag=t) }}">{{ t }}</a>{% endfor %}</p>{% endif %}
         {% if b.review %}<p class="review">{{ b.review }}</p>{% endif %}
       </div>
-      {% if can_edit(b) %}<div class="actions">
+      {% if user %}<div class="actions">
         <a href="{{ url_for('edit', beer_id=b.id) }}">Edit</a>
         <form method="post" action="{{ url_for('delete', beer_id=b.id) }}"
               onsubmit="return confirm('Delete {{ b.name|replace("'", "")|e }}?')">
