@@ -27,15 +27,31 @@ services:
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       UPLOAD_DIR: /data/uploads
+      COOKIE_SECURE: "1"
     volumes:
       - uploads:/data/uploads
-    ports:
-      - "5000:5000"
+    networks:
+      - default
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${TRAEFIK_NETWORK}
+      - traefik.http.routers.beerlog.rule=Host(`${BEER_HOST}`)
+      - traefik.http.routers.beerlog.entrypoints=${TRAEFIK_ENTRYPOINT}
+      - traefik.http.routers.beerlog.tls=true
+      - traefik.http.routers.beerlog.tls.certresolver=${CERT_RESOLVER}
+      - traefik.http.services.beerlog.loadbalancer.server.port=5000
+      # optional: reuse your existing IP allowlist middleware
+      # - traefik.http.routers.beerlog.middlewares=lan-only@file
     depends_on:
       db:
         condition: service_healthy
 
+networks:
+  proxy:
+    external: true
+    name: ${TRAEFIK_NETWORK}
+
 volumes:
   db_data:
   uploads:
-

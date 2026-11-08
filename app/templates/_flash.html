@@ -1,0 +1,1 @@
+{% for cat, m in get_flashed_messages(with_categories=true) %}<p class="{{ 'notice' if cat == 'ok' else 'error' }}">{{ m }}</p>{% endfor %}

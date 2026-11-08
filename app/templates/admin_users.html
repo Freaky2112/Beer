@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "_head.html" %}
+  <title>Users</title>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Users</h1>
+    <div class="auth"><a href="{{ url_for('index') }}">Back to the log</a></div>
+  </header>
+  {% include "_flash.html" %}
+
+  <form method="post" action="{{ url_for('admin_add_user') }}" class="panel">
+    <h2>Add a user</h2>
+    <div class="grid">
+      <label class="wide">Username
+        <input name="username" required pattern="[A-Za-z0-9._\-]{3,30}" autocapitalize="none" autocomplete="off" placeholder="e.g. bob">
+      </label>
+      <label class="wide">Password (8+ characters)
+        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      </label>
+      <label class="wide inline"><input type="checkbox" name="is_admin" value="1"> Can manage users (admin)</label>
+    </div>
+    <button class="primary">Add user</button>
+  </form>
+
+  <ul class="users">
+    {% for u in users %}
+    <li>
+      <div class="who">
+        <strong>{{ u.username }}</strong>{% if u.is_admin %} <span class="badge">admin</span>{% endif %}
+        <small>{{ u.n }} beer{{ '' if u.n == 1 else 's' }}</small>
+      </div>
+      <div class="user-actions">
+        <details class="reset">
+          <summary>Reset password</summary>
+          <form method="post" action="{{ url_for('admin_reset_password', uid=u.id) }}" class="inline-form">
+            <input type="password" name="new_password" required minlength="8" placeholder="New password" autocomplete="new-password">
+            <button class="primary">Set</button>
+          </form>
+        </details>
+        {% if u.id != user.id %}
+        <form method="post" action="{{ url_for('admin_delete_user', uid=u.id) }}"
+              onsubmit="return confirm('Delete user {{ u.username }}? Their beers stay in the log.')">
+          <button class="link">Delete</button>
+        </form>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</main>
+</body>
+</html>

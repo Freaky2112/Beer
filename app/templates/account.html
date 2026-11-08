@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% include "_head.html" %}
+  <title>Account</title>
+</head>
+<body>
+<main class="narrow">
+  <header>
+    <h1>Account</h1>
+    <div class="auth"><a href="{{ url_for('index') }}">Back to the log</a></div>
+  </header>
+  {% include "_flash.html" %}
+  <form method="post" class="panel">
+    <p class="who-line">Signed in as <strong>{{ user.username }}</strong>{% if user.is_admin %} <span class="badge">admin</span>{% endif %}</p>
+    <div class="grid">
+      <label class="wide">Current password
+        <input type="password" name="current_password" required autocomplete="current-password">
+      </label>
+      <label class="wide">New password (8+ characters)
+        <input type="password" name="new_password" required minlength="8" autocomplete="new-password">
+      </label>
+      <label class="wide">Confirm new password
+        <input type="password" name="confirm_password" required minlength="8" autocomplete="new-password">
+      </label>
+    </div>
+    <button class="primary">Change password</button>
+  </form>
+</main>
+</body>
+</html>
