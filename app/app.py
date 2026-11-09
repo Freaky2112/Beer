@@ -1,15 +1,16 @@
-import hmac
 import json
 import os
+import re
 import time
 import uuid
 from datetime import date
 from functools import wraps
 
 import pymysql
-from flask import (Flask, Response, abort, flash, redirect, render_template,
+from flask import (Flask, Response, abort, flash, g, redirect, render_template,
                    request, send_from_directory, session, url_for)
 from PIL import Image, ImageOps
+from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__)
 for _v in ("SECRET_KEY", "ADMIN_USER", "ADMIN_PASSWORD"):
@@ -26,22 +27,60 @@ app.config.update(
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "/data/uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# ADMIN_USER / ADMIN_PASSWORD only seed the first admin when the users table is empty.
 ADMIN_USER = os.environ["ADMIN_USER"]
 ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9._\-]{3,30}$")
+MIN_PASSWORD = 8
+DUMMY_HASH = generate_password_hash("not-a-real-password")  # equalises timing for unknown users
+
+
+def current_user():
+    """Logged-in user row (id, username, is_admin) or None. Cached per request."""
+    if "current_user" not in g:
+        u = None
+        uid = session.get("uid")
+        if uid:
+            with db() as c, c.cursor() as cur:
+                cur.execute("SELECT id, username, is_admin FROM users WHERE id=%s", (uid,))
+                u = cur.fetchone()
+            if u:
+                u["is_admin"] = bool(u["is_admin"])
+            else:
+                session.clear()  # user was deleted
+        g.current_user = u
+    return g.current_user
 
 
 def login_required(f):
     @wraps(f)
     def wrapper(*a, **kw):
-        if not session.get("user"):
+        if not current_user():
             return redirect(url_for("login"))
         return f(*a, **kw)
     return wrapper
 
 
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*a, **kw):
+        u = current_user()
+        if not u:
+            return redirect(url_for("login"))
+        if not u["is_admin"]:
+            abort(403)
+        return f(*a, **kw)
+    return wrapper
+
+
+def can_modify(beer, user):
+    return bool(user) and (user["is_admin"] or beer["user_id"] == user["id"])
+
+
 @app.context_processor
 def inject_user():
-    return {"user": session.get("user"), "PRESET_TAGS": PRESET_TAGS}
+    return {"user": current_user(), "PRESET_TAGS": PRESET_TAGS}
 
 
 @app.route("/manifest.webmanifest")
@@ -62,13 +101,15 @@ def manifest():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        u = request.form.get("username", "")
+        u = request.form.get("username", "").strip()
         p = request.form.get("password", "")
-        ok_u = hmac.compare_digest(u.encode(), ADMIN_USER.encode())
-        ok_p = hmac.compare_digest(p.encode(), ADMIN_PASSWORD.encode())
-        if ok_u and ok_p:
+        with db() as c, c.cursor() as cur:
+            cur.execute("SELECT id, password_hash FROM users WHERE username=%s", (u,))
+            row = cur.fetchone()
+        ok = check_password_hash(row["password_hash"] if row else DUMMY_HASH, p) and row is not None
+        if ok:
             session.clear()
-            session["user"] = u
+            session["uid"] = row["id"]
             return redirect(url_for("index"))
         time.sleep(1)
         flash("Wrong username or password.")
@@ -79,6 +120,98 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("index"))
+
+
+@app.route("/account", methods=["GET", "POST"])
+@login_required
+def account():
+    if request.method == "POST":
+        cur_pw = request.form.get("current_password", "")
+        new_pw = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+        uid = current_user()["id"]
+        with db() as c, c.cursor() as cur:
+            cur.execute("SELECT password_hash FROM users WHERE id=%s", (uid,))
+            row = cur.fetchone()
+            if not row or not check_password_hash(row["password_hash"], cur_pw):
+                flash("Current password is wrong.")
+            elif len(new_pw) < MIN_PASSWORD:
+                flash(f"New password must be at least {MIN_PASSWORD} characters.")
+            elif new_pw != confirm:
+                flash("New passwords don't match.")
+            else:
+                cur.execute("UPDATE users SET password_hash=%s WHERE id=%s",
+                            (generate_password_hash(new_pw), uid))
+                flash("Password changed.", "ok")
+        return redirect(url_for("account"))
+    return render_template("account.html")
+
+
+@app.get("/admin/users")
+@admin_required
+def admin_users():
+    with db() as c, c.cursor() as cur:
+        cur.execute(
+            "SELECT u.id, u.username, u.is_admin, COUNT(b.id) n FROM users u"
+            " LEFT JOIN beers b ON b.user_id = u.id GROUP BY u.id ORDER BY u.username"
+        )
+        users = cur.fetchall()
+    return render_template("admin_users.html", users=users)
+
+
+@app.post("/admin/users/add")
+@admin_required
+def admin_add_user():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    is_admin = 1 if request.form.get("is_admin") else 0
+    if not USERNAME_RE.match(username):
+        flash("Username: 3-30 characters, letters, digits, dot, dash or underscore.")
+    elif len(password) < MIN_PASSWORD:
+        flash(f"Password must be at least {MIN_PASSWORD} characters.")
+    else:
+        try:
+            with db() as c, c.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO users (username, password_hash, is_admin) VALUES (%s,%s,%s)",
+                    (username, generate_password_hash(password), is_admin),
+                )
+            flash(f"User {username} added.", "ok")
+        except pymysql.err.IntegrityError:
+            flash("That username is already taken.")
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:uid>/password")
+@admin_required
+def admin_reset_password(uid):
+    new_pw = request.form.get("new_password", "")
+    if len(new_pw) < MIN_PASSWORD:
+        flash(f"Password must be at least {MIN_PASSWORD} characters.")
+    else:
+        with db() as c, c.cursor() as cur:
+            cur.execute("UPDATE users SET password_hash=%s WHERE id=%s",
+                        (generate_password_hash(new_pw), uid))
+            if cur.rowcount:
+                flash("Password reset.", "ok")
+            else:
+                abort(404)
+    return redirect(url_for("admin_users"))
+
+
+@app.post("/admin/users/<int:uid>/delete")
+@admin_required
+def admin_delete_user(uid):
+    if uid == current_user()["id"]:
+        flash("You can't delete your own account.")
+        return redirect(url_for("admin_users"))
+    with db() as c, c.cursor() as cur:
+        cur.execute("DELETE FROM users WHERE id=%s", (uid,))
+        if not cur.rowcount:
+            abort(404)
+    flash("User deleted. Their beers stay in the log.", "ok")
+    return redirect(url_for("admin_users"))
+
 
 PRESET_TAGS = [
     "citrus", "tropical", "fruity", "floral", "piney", "hoppy", "bitter",
@@ -93,6 +226,16 @@ CREATE TABLE IF NOT EXISTS beer_tags (
     PRIMARY KEY (beer_id, tag),
     KEY idx_tag (tag),
     FOREIGN KEY (beer_id) REFERENCES beers(id) ON DELETE CASCADE
+) CHARACTER SET utf8mb4
+"""
+
+USERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(30) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    is_admin TINYINT(1) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) CHARACTER SET utf8mb4
 """
 
@@ -159,6 +302,30 @@ def init_db():
                 cur.execute(
                     "ALTER TABLE beers ADD COLUMN IF NOT EXISTS serve_temp DECIMAL(4,1) NULL"
                 )
+                # --- multi-user ---
+                cur.execute(USERS_SCHEMA)
+                cur.execute("SELECT COUNT(*) n FROM users")
+                if cur.fetchone()["n"] == 0:
+                    # INSERT IGNORE: both gunicorn workers may race here, the UNIQUE key settles it.
+                    cur.execute(
+                        "INSERT IGNORE INTO users (username, password_hash, is_admin) VALUES (%s,%s,1)",
+                        (ADMIN_USER, generate_password_hash(ADMIN_PASSWORD)),
+                    )
+                cur.execute("ALTER TABLE beers ADD COLUMN IF NOT EXISTS user_id INT NULL")
+                cur.execute(
+                    "ALTER TABLE beers ADD CONSTRAINT fk_beers_user"
+                    " FOREIGN KEY IF NOT EXISTS (user_id) REFERENCES users(id) ON DELETE SET NULL"
+                )
+                # Existing beers were all logged by the old single admin: assign them once.
+                cur.execute(
+                    "INSERT IGNORE INTO app_meta (k, v) VALUES ('beers_owner_migrated', '1')"
+                )
+                if cur.rowcount == 1:
+                    cur.execute(
+                        "UPDATE beers SET user_id = (SELECT id FROM users WHERE username=%s)"
+                        " WHERE user_id IS NULL",
+                        (ADMIN_USER,),
+                    )
             return
         except pymysql.err.OperationalError:
             time.sleep(2)
@@ -228,7 +395,7 @@ def valid_date(v):
 
 
 SORTS = {
-    "recent": "tasted_on DESC, id DESC",
+    "recent": "tasted_on DESC, beers.id DESC",
     "rating": "rating DESC, tasted_on DESC",
     "name": "name ASC",
     "abv": "abv DESC, name ASC",
@@ -247,6 +414,7 @@ def index():
     min_rating = num(a.get("min_rating"), int) or 0
     date_from = valid_date(a.get("date_from", ""))
     date_to = valid_date(a.get("date_to", ""))
+    by = a.get("by", "").strip()
     sel_tags = []
     for t in a.getlist("tag"):
         t = " ".join(t.lower().split())
@@ -263,6 +431,9 @@ def index():
     if min_rating:
         where.append("rating >= %s")
         args.append(min_rating)
+    if by:
+        where.append("u.username = %s")
+        args.append(by)
     if date_from:
         where.append("tasted_on >= %s")
         args.append(date_from)
@@ -276,7 +447,7 @@ def index():
         args.append(t)
     filtered = bool(where)
 
-    sql = "SELECT * FROM beers"
+    sql = "SELECT beers.*, u.username AS author FROM beers LEFT JOIN users u ON u.id = beers.user_id"
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY " + SORTS[sort]
@@ -299,12 +470,18 @@ def index():
             "SELECT DISTINCT style FROM beers WHERE style IS NOT NULL AND style <> '' ORDER BY style"
         )
         styles = [r["style"] for r in cur.fetchall()]
+        cur.execute(
+            "SELECT DISTINCT u.username FROM users u JOIN beers b ON b.user_id = u.id"
+            " ORDER BY u.username"
+        )
+        reviewers = [r["username"] for r in cur.fetchall()]
         cur.execute("SELECT tag, COUNT(*) n FROM beer_tags GROUP BY tag ORDER BY tag")
         tag_counts = cur.fetchall()
     return render_template(
         "index.html", beers=beers, tagmap=tagmap, stats=stats, q=q, sort=sort,
         style=style, min_rating=min_rating, date_from=date_from, date_to=date_to,
         sel_tags=sel_tags, filtered=filtered, styles=styles, tag_counts=tag_counts,
+        by=by, reviewers=reviewers,
         today=date.today().isoformat(),
     )
 
@@ -345,8 +522,8 @@ def add():
     with db() as c, c.cursor() as cur:
         cur.execute(
             "INSERT INTO beers (name, brewery, style, abv, rating, review, tasted_on,"
-            " ibu, serve_temp, photo) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-            (*form_data(), photo_name),
+            " ibu, serve_temp, photo, user_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (*form_data(), photo_name, current_user()["id"]),
         )
         set_tags(cur, cur.lastrowid, parse_tags())
     return redirect(url_for("index"))
@@ -360,6 +537,8 @@ def edit(beer_id):
         beer = cur.fetchone()
         if not beer:
             abort(404)
+        if not can_modify(beer, current_user()):
+            abort(403)
         if request.method == "POST":
             old = beer["photo"]
             new = save_photo(request.files.get("photo"))
@@ -387,9 +566,12 @@ def edit(beer_id):
 @login_required
 def delete(beer_id):
     with db() as c, c.cursor() as cur:
-        cur.execute("SELECT photo FROM beers WHERE id=%s", (beer_id,))
+        cur.execute("SELECT photo, user_id FROM beers WHERE id=%s", (beer_id,))
         row = cur.fetchone()
+        if not row:
+            abort(404)
+        if not can_modify(row, current_user()):
+            abort(403)
         cur.execute("DELETE FROM beers WHERE id=%s", (beer_id,))
-    if row:
-        remove_photo(row["photo"])
+    remove_photo(row["photo"])
     return redirect(url_for("index"))
