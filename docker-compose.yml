@@ -42,13 +42,13 @@ services:
       - "traefik.docker.network=proxy"
 
      # External
-      - "traefik.http.routers.beer-ext.rule=Host(`beer.networkeclipse.com`)"
+      - "traefik.http.routers.beer-ext.rule=Host(`beer.yourdomain.com`)"
       - "traefik.http.routers.beer-ext.entrypoints=https"
       - "traefik.http.routers.beer-ext.tls=true"
       - "traefik.http.routers.beer-ext.tls.certresolver=cloudflare"
 
      # Internal
-      - "traefik.http.routers.beer.rule=Host(`beer.homelab.networkeclipse.com`)"
+      - "traefik.http.routers.beer.rule=Host(`beer.homelab.yourdomain.com`)"
       - "traefik.http.routers.beer.entrypoints=https"
       - "traefik.http.routers.beer.tls=true"
       - "traefik.http.routers.beer.tls.certresolver=cloudflare"

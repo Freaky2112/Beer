@@ -1,182 +1,168 @@
-# 🍺 Beer DB
+# Beer log
 
-A self-hosted beer database web application, packaged with Docker Compose.
+A self-hosted beer tasting log for you and your friends. Log what you drink, rate it out of 10, add a photo and flavour tags, and search it all later. Runs as two containers (Flask + MariaDB) with Docker Compose.
 
-Beer DB runs as a web application backed by MariaDB. Docker Compose builds the application from `./app`, starts the database, waits for the database health check, and exposes the web interface on port **8080**. Uploaded files and database data are stored in persistent Docker volumes.
+## Features
 
-## ✨ Overview
+- **Reviews:** name, brewery, style, ABV, IBU, serving temperature, date, a written review and a photo.
+- **Ratings:** 1 to 10 in half points, shown as a ring on each beer.
+- **Flavour tags:** 20 presets plus your own custom tags.
+- **Search and filters:** by text, style, minimum rating, date range, reviewer and tags. Sort by newest, best rated, A to Z, strongest or most bitter.
+- **Multiple users:** everyone logs in with their own account and edits their own beers. Admins add users and can edit anything.
+- **Public reading:** the log can be read without logging in. Only logged-in users can add reviews.
+- **Phone friendly:** installs to the home screen as an app, with light and dark themes that follow your device.
 
-- **Web application:** built locally from `./app`
-- **Database:** MariaDB 11
-- **Deployment:** Docker Compose
-- **Web access:** `http://localhost:8080`
-- **Persistent storage:** database and uploads use Docker volumes
-- **License:** [Unlicense](LICENSE)
+## Quick start
 
-## 🧰 Requirements
+You need Docker with Compose v2.
 
-- Docker Engine
-- Docker Compose v2 (`docker compose`)
-- A free host port **8080**
-
-## 🚀 Getting Started
-
-### 1. Clone the repository
+**1. Clone the repo**
 
 ```bash
 git clone https://github.com/Freaky2112/Beer.git
 cd Beer
 ```
 
-### 2. Configure environment variables
-
-Create a `.env` file in the repository root. Add the variables used by `docker-compose.yml`:
+**2. Create a `.env` file** in the repo root:
 
 ```dotenv
-DB_ROOT_PASSWORD=replace_with_a_strong_root_password
+DB_ROOT_PASSWORD=change_me_root
 DB_NAME=beerdb
 DB_USER=beeruser
-DB_PASSWORD=replace_with_a_strong_database_password
-SECRET_KEY=replace_with_a_long_random_secret
+DB_PASSWORD=change_me_db
+SECRET_KEY=change_me_long_random_string
 ADMIN_USER=admin
-ADMIN_PASSWORD=replace_with_a_strong_admin_password
+ADMIN_PASSWORD=change_me_admin
 ```
 
-Replace every example value with your own secure values before starting the application. Keep `.env` private and **never commit real passwords or secret keys** to Git.
+Use your own values. Generate the secret key with `openssl rand -hex 32`.
 
-Generate a random secret key on Linux with:
+**3. Check the proxy network and labels.** `docker-compose.yml` is set up for [Traefik](https://traefik.io/) and expects an external Docker network called `proxy`. Pick one:
+
+- **With Traefik:** edit the two `Host(...)` rules in the `web` labels to your own domains.
+- **Without Traefik:** delete the `labels:` block and the `proxy` entries under `networks:` (in `web` and at the bottom of the file).
+
+If you keep the network but it doesn't exist yet, create it once:
 
 ```bash
-openssl rand -hex 32
+docker network create proxy
 ```
 
-### 3. Start Beer DB
-
-Build the web image and start the services in the background:
+**4. Start it**
 
 ```bash
 docker compose up -d --build
 ```
 
-### 4. Open the web interface
+Open **http://localhost:5000** and log in with `ADMIN_USER` and `ADMIN_PASSWORD`. From another machine, use the Docker host's IP address instead of `localhost`.
 
-Visit:
+## Users and accounts
 
-**http://localhost:8080**
+`ADMIN_USER` and `ADMIN_PASSWORD` only create the first admin, and only when there are no users yet. After that, accounts live in the database:
 
-If you are accessing the application from another machine, replace `localhost` with the IP address or hostname of the Docker host.
+| Where | What you can do |
+|---|---|
+| `/account` | Change your own password (any user) |
+| `/admin/users` | Add users, reset passwords, delete users (admins only) |
 
-## ⚙️ Configuration
+Changing `ADMIN_PASSWORD` in `.env` later has no effect. Deleting a user keeps their beers in the log, and from then on only admins can edit them. There is no public sign-up: an admin creates every account.
 
-The following environment variables are read by the Compose configuration:
+**Forgot the admin password?** Set a new one straight in the database (replace `NEW_PASSWORD` and `admin`):
+
+```bash
+docker compose exec -T web python -c "from werkzeug.security import generate_password_hash as g; print(\"UPDATE users SET password_hash='\" + g('NEW_PASSWORD') + \"' WHERE username='admin';\")" \
+  | docker compose exec -T db sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"'
+```
+
+## Configuration
+
+All settings are environment variables, set through `.env`.
 
 | Variable | Purpose |
 |---|---|
 | `DB_ROOT_PASSWORD` | MariaDB root password |
-| `DB_NAME` | Application database name |
-| `DB_USER` | Database user for the application |
-| `DB_PASSWORD` | Password for the application database user |
-| `SECRET_KEY` | Application secret key |
-| `ADMIN_USER` | Administrator username configured for the application |
-| `ADMIN_PASSWORD` | Administrator password configured for the application |
+| `DB_NAME` | Database name |
+| `DB_USER` / `DB_PASSWORD` | Database login used by the app |
+| `SECRET_KEY` | Signs login sessions. Changing it logs everyone out |
+| `ADMIN_USER` / `ADMIN_PASSWORD` | Seeds the first admin (see above) |
+| `COOKIE_SECURE` | Optional. Set to `1` to send the login cookie over HTTPS only. Add it under `web: environment:` in the compose file |
 
-The Compose file maps host port `8080` to container port `5000`. The database service is not published directly to the host; the web service connects to it over the Compose network.
+The web app is published on port `5000`. To change it, edit the host side of `"5000:5000"` in `docker-compose.yml`.
 
-## 🗄️ Persistent Data
+## Your data
 
-Docker Compose creates two named volumes:
+Two named Docker volumes hold everything and survive rebuilds and `docker compose down`:
 
-| Volume | Stores |
+| Volume | Contents |
 |---|---|
-| `db_data` | MariaDB database files |
-| `uploads` | Uploaded application files |
+| `db_data` | The MariaDB database |
+| `uploads` | Beer photos |
 
-These volumes persist when containers are recreated. Removing containers alone does not remove named volumes. However, commands that explicitly remove volumes can permanently delete application data.
+`docker compose down -v` deletes both volumes. Don't use `-v` unless you mean it.
 
-## 🛠️ Useful Commands
-
-View service status:
+**Back up the database**
 
 ```bash
-docker compose ps
+docker compose exec -T db sh -c 'mariadb-dump -uroot -p"$MARIADB_ROOT_PASSWORD" "$MARIADB_DATABASE"' > beer-backup.sql
 ```
 
-Follow logs:
+**Back up the photos** (check the volume name with `docker volume ls`; it is usually `beer_uploads`)
 
 ```bash
-docker compose logs -f
+docker run --rm -v beer_uploads:/data -v "$PWD":/backup alpine tar czf /backup/uploads.tar.gz -C /data .
 ```
 
-Follow only the web application logs:
+## Updating
 
 ```bash
-docker compose logs -f web
-```
-
-Follow only the database logs:
-
-```bash
-docker compose logs -f db
-```
-
-Restart the services:
-
-```bash
-docker compose restart
-```
-
-Stop the services while keeping persistent volumes:
-
-```bash
-docker compose down
-```
-
-Rebuild and restart after application changes:
-
-```bash
+git pull
 docker compose up -d --build
 ```
 
-## 🔒 Security Notes
+Database changes run automatically at startup, so there is nothing to migrate by hand. When you upgrade an older single-user install, the existing beers are assigned to your admin user the first time the new version starts.
 
-- Use strong, unique values for all passwords and secrets.
-- Do not expose the application publicly without considering HTTPS, authentication, firewall rules, and updates.
-- Back up the database and uploaded files regularly.
-- Do not commit `.env` files containing real credentials. If a secret has been committed, rotate it; deleting it from the latest commit alone may not remove it from Git history.
-- Keep Docker and the underlying host up to date.
-
-## 🧯 Troubleshooting
-
-**The page does not load**
-
-Check that the services are running with `docker compose ps` and inspect the logs with `docker compose logs -f`.
-
-**The database is still starting**
-
-The web service is configured to wait for the database health check. Check `docker compose logs -f db` and confirm the database environment variables are set correctly.
-
-**Port 8080 is already in use**
-
-Change the host-side port in `docker-compose.yml`. For example, change `8080:5000` to `8081:5000`, recreate the services, and visit `http://localhost:8081`.
-
-**Configuration changes do not take effect**
-
-After changing environment values, recreate the services:
+## Everyday commands
 
 ```bash
-docker compose up -d
+docker compose ps                # what is running
+docker compose logs -f web       # follow the app logs
+docker compose restart           # restart everything
+docker compose down              # stop, keeping your data
 ```
 
-For changes to the application image, rebuild it:
+## Security notes
 
-```bash
-docker compose up -d --build
+- Put it behind HTTPS before exposing it to the internet, and set `COOKIE_SECURE=1` when you do.
+- Never commit `.env`. If a secret was ever committed, rotate it, because deleting the file later does not remove it from Git history.
+- Uploaded photos are re-encoded as JPEG and resized to at most 1200 px, with a 15 MB upload limit.
+- Back up regularly, and keep Docker and the host up to date.
+
+## Project layout
+
+```
+.
+├── docker-compose.yml     # web + MariaDB (+ optional Traefik labels)
+├── .env                   # your secrets (not committed)
+└── app/
+    ├── app.py             # Flask app: routes, accounts, database setup
+    ├── Dockerfile
+    ├── requirements.txt
+    ├── templates/         # HTML pages
+    └── static/            # CSS, font, images, app icons
 ```
 
-## 📄 License
+Built with Flask, PyMySQL, Gunicorn and Pillow on Python 3.12, with MariaDB 11.
 
-This project is released under the [Unlicense](LICENSE), placing it in the public domain to the extent permitted by law.
+## Troubleshooting
 
----
+**The page doesn't load.** Run `docker compose ps`, then `docker compose logs -f web`.
 
-Made for beer lovers and self-hosters. 🍻
+**`network proxy declared as external, but could not be found`.** Create it with `docker network create proxy`, or remove the Traefik network as described in Quick start.
+
+**`Missing SECRET_KEY` (or `ADMIN_USER`, `ADMIN_PASSWORD`) in the web logs.** The `.env` file is missing or incomplete. Fix it, then run `docker compose up -d --build`.
+
+**Port 5000 is already in use.** Change the host port in `docker-compose.yml`, for example `"5001:5000"`.
+
+## License
+
+Released under the [Unlicense](LICENSE): public domain, do what you like.
