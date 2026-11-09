@@ -92,7 +92,7 @@ def manifest():
     ]
     data = {
         "name": "Beer log", "short_name": "Beer log", "start_url": "/", "scope": "/",
-        "display": "standalone", "background_color": "#17201a", "theme_color": "#17201a",
+        "display": "standalone", "background_color": "#130f0c", "theme_color": "#130f0c",
         "icons": icons,
     }
     return Response(json.dumps(data), mimetype="application/manifest+json")
