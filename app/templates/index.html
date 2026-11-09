@@ -2,28 +2,26 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#e9ece1" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#17201a" media="(prefers-color-scheme: dark)">
-  <link rel="manifest" href="{{ url_for('manifest') }}">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  {% include "_head.html" %}
   <title>Beer log</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 <main>
   <header>
-    <h1>Beer log</h1>
-    <p class="count">{{ stats.n }} tasted{% if stats.n %}, average {{ stats.avg }}/10{% endif %}</p>
-    <div class="auth">
+    <a class="brand" href="{{ url_for('index') }}">
+      <img src="{{ url_for('static', filename='hop.webp') }}" alt="" width="28" height="50">
+      <h1>Beer log</h1>
+    </a>
+    <nav class="auth">
       {% if user %}
-      <a href="{{ url_for('account') }}">{{ user.username }}</a>
       {% if user.is_admin %}<a href="{{ url_for('admin_users') }}">Users</a>{% endif %}
+      <a class="me" href="{{ url_for('account') }}">{{ user.username }}</a>
       <form method="post" action="{{ url_for('logout') }}"><button class="link">Log out</button></form>
       {% else %}
-      <a href="{{ url_for('login') }}">Log in to add reviews</a>
+      <a class="me" href="{{ url_for('login') }}">Log in to add reviews</a>
       {% endif %}
-    </div>
+    </nav>
+    <p class="count"><strong>{{ stats.n }}</strong> tasted{% if stats.n %}<span class="sep"></span><strong>{{ stats.avg }}</strong> average out of 10{% endif %}</p>
   </header>
 
   {% include "_flash.html" %}
@@ -102,27 +100,26 @@
   {% if filtered %}<p class="count result">{{ beers|length }} of {{ stats.n }} beers match</p>{% endif %}
 
   {% if not beers %}
-    <p class="empty">{{ 'No beer matches those filters.' if filtered else 'Nothing logged yet. Log in to add the first beer.' }}</p>
+    <p class="empty">{{ 'No beer matches those filters. Reset them to see the full log.' if filtered else ('Nothing logged yet. Tap + to add the first beer.' if user else 'Nothing logged yet. Log in to add the first beer.') }}</p>
   {% endif %}
 
   <ul class="beers">
   {% for b in beers %}
     <li>
-      <div class="score" title="{{ '%g' % b.rating }} out of 10" aria-label="{{ '%g' % b.rating }} out of 10"><strong>{{ '%g' % b.rating }}</strong><small>/10</small></div>
       {% if b.photo %}<a class="thumb" href="{{ url_for('photo', name=b.photo) }}"><img src="{{ url_for('photo', name=b.photo) }}" alt="{{ b.name }}" loading="lazy"></a>{% endif %}
       <div class="body">
         <h2>{{ b.name }}</h2>
-        <p class="meta">
-          {{ [b.brewery, b.style,
-            ('%s%%' % b.abv) if b.abv is not none else None,
+        {% if b.brewery %}<p class="brewery">{{ b.brewery }}</p>{% endif %}
+        {% set facts = [b.style,
+            ('%s%% ABV' % b.abv) if b.abv is not none else None,
             ('%s IBU' % b.ibu) if b.ibu is not none else None,
-            ('serve %g°C' % b.serve_temp) if b.serve_temp is not none else None,
-            b.tasted_on.strftime('%d %b %Y'),
-            ('by ' ~ b.author) if b.author else None] | select | join(' · ') }}
-        </p>
+            ('serve %g °C' % b.serve_temp) if b.serve_temp is not none else None] | select | list %}
+        {% if facts %}<p class="facts">{% for f in facts %}<span{% if loop.first and b.style %} class="style"{% endif %}>{{ f }}</span>{% endfor %}</p>{% endif %}
         {% if tagmap.get(b.id) %}<p class="tags">{% for t in tagmap[b.id] %}<a class="tag {{ 'on' if t in sel_tags }}" href="{{ url_for('index', tag=t) }}">{{ t }}</a>{% endfor %}</p>{% endif %}
         {% if b.review %}<p class="review">{{ b.review }}</p>{% endif %}
+        <p class="byline"><time datetime="{{ b.tasted_on.isoformat() }}">{{ b.tasted_on.strftime('%d %b %Y') }}</time>{% if b.author %}<span class="by">{{ b.author }}</span>{% endif %}</p>
       </div>
+      <div class="score" style="--p: {{ '%g' % (b.rating * 10) }}" title="{{ '%g' % b.rating }} out of 10" aria-label="{{ '%g' % b.rating }} out of 10"><strong>{{ '%g' % b.rating }}</strong></div>
       {% if user and (user.is_admin or b.user_id == user.id) %}<div class="actions">
         <a href="{{ url_for('edit', beer_id=b.id) }}">Edit</a>
         <form method="post" action="{{ url_for('delete', beer_id=b.id) }}"
